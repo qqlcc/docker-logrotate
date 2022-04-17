@@ -1,1 +1,4 @@
 Dockerfile
+scripts
+README.md
+deployment-sample.yml

@@ -1,0 +1,124 @@
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   creationTimestamp: null
+#   name: logrotate-conf
+#   labels:
+#     kubernetes.io/app: logrotate
+# data:
+#   logrotate.conf: |
+#     nomail
+#     daily
+#     compress
+#     copytruncate
+#     rotate 3
+#     olddir /tmp/old
+
+#     /tmp/admin_access.log {
+#         su envoy envoy
+#         missingok
+#         size 1024M
+#         maxage 3
+#     }
+
+#     /tmp/envoy_access.log {
+#         su envoy envoy
+#         missingok
+#         size 1024M
+#         maxage 3
+#     }
+# ---
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   creationTimestamp: null
+#   name: logrotate-scripts
+#   labels:
+#     kubernetes.io/app: logrotate
+# data:
+#   adduser.sh: |-
+#     #!/bin/sh
+
+#     addgroup -g 101 envoy
+#     adduser -u 101 -G envoy -h /home/envoy -s /bin/bash -S envoy
+#   createdir.sh: |-
+#     #!/bin/sh
+
+#     mkdir /tmp/old
+#     chown -R 101:101 /tmp/old
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: logrotate-sample
+  labels:
+    kubernetes.io/app: logrotate
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  selector:
+    matchLabels:
+      kubernetes.io/app: logrotate
+  template:
+    metadata:
+      name: logrotate
+      creationTimestamp: null
+      labels:
+        kubernetes.io/app: logrotate
+    spec:
+      dnsConfig:
+        options:
+          - name: single-request-reopen
+            value: ''
+          - name: ndots
+            value: '2'
+      volumes:
+        - name: logrotate-scripts
+          configMap:
+            name: logrotate-scripts
+            defaultMode: 493
+        - name: logrotate-conf
+          configMap:
+            name: logrotate-conf
+            items:
+              - key: logrotate.conf
+                path: logrotate.conf
+            defaultMode: 420
+        - name: envoy-log
+          hostPath:
+            path: /tmp/envoy
+            type: 'DirectoryOrCreate'
+        # - name: envoy-log
+        #   emptyDir:
+        #     sizeLimit: 10Gi
+      containers:
+        - name: logrotate
+          image: 'your_repository/logrotate:r0.0.1'
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TZ
+              value: Asia/Hong_Kong
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 25m
+              memory: 128Mi
+          volumeMounts:
+            - name: logrotate-scripts
+              mountPath: /usr/local/scripts
+            - name: logrotate-conf
+              mountPath: /etc/logrotate.conf
+              subPath: logrotate.conf
+            - name: envoy-log
+              mountPath: /tmp/
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+      schedulerName: default-scheduler
+
+
